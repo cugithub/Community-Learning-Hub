@@ -1,0 +1,153 @@
+// === COMMUNITY LEARNING HUB - BACKEND SETUP ===
+// server/app.js
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+require('dotenv').config();
+
+const authRoutes = require('./routes/auth');
+const feedRoutes = require('./routes/feed');
+const userRoutes = require('./routes/user');
+const adminRoutes = require('./routes/admin');
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+app.use('/api/auth', authRoutes);
+app.use('/api/feed', feedRoutes);
+app.use('/api/user', userRoutes);
+app.use('/api/admin', adminRoutes);
+
+mongoose.connect(process.env.MONGO_URI).then(() => {
+  console.log('MongoDB connected');
+  app.listen(process.env.PORT || 5000, () => console.log('Server running'));
+});
+
+// server/models/User.js
+const mongoose = require('mongoose');
+
+const userSchema = new mongoose.Schema({
+  email: String,
+  password: String,
+  role: { type: String, default: 'User' },
+  credits: { type: Number, default: 0 },
+  transactions: [
+    {
+      type: { type: String },
+      amount: Number,
+      description: String,
+      timestamp: { type: Date, default: Date.now }
+    }
+  ],
+  savedContent: [Object],
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+// === FRONTEND SETUP ===
+// src/App.js
+import React from 'react';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import Login from './pages/Login';
+import Feed from './pages/Feed';
+import Dashboard from './pages/Dashboard';
+import AdminPanel from './pages/AdminPanel';
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/admin" element={<AdminPanel />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
+  );
+}
+
+// src/pages/Feed.js
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+export default function Feed() {
+  const [feeds, setFeeds] = useState([]);
+
+  useEffect(() => {
+    axios.get('/api/feed').then(res => setFeeds(res.data));
+  }, []);
+
+  const saveContent = (item) => axios.post('/api/user/save', item);
+  const reportContent = (item) => axios.post('/api/user/report', item);
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Curated Feed</h1>
+      {feeds.map((item, idx) => (
+        <div key={idx} className="border p-4 mb-2 rounded shadow">
+          <p className="text-sm font-semibold">{item.source}</p>
+          <p className="text-md">{item.title}</p>
+          <a href={item.link} className="text-blue-500 underline" target="_blank" rel="noreferrer">Preview</a>
+          <div className="mt-2 flex gap-3">
+            <button onClick={() => saveContent(item)}>Save</button>
+            <button onClick={() => reportContent(item)}>Report</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// src/pages/Dashboard.js
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+export default function Dashboard() {
+  const [data, setData] = useState({});
+
+  useEffect(() => {
+    axios.get('/api/user/me').then(res => setData(res.data));
+  }, []);
+
+  return (
+    <div className="p-4">
+      <h2 className="text-xl font-bold">Dashboard</h2>
+      <p>Credits: {data.credits}</p>
+      <h3 className="mt-4">Transactions</h3>
+      <ul>
+        {data.transactions?.map((tx, i) => (
+          <li key={i}>{tx.description} — {tx.amount} pts — {new Date(tx.timestamp).toLocaleString()}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// src/pages/AdminPanel.js
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+
+export default function AdminPanel() {
+  const [reports, setReports] = useState([]);
+  const [stats, setStats] = useState({});
+
+  useEffect(() => {
+    axios.get('/api/admin/reports').then(res => setReports(res.data));
+    axios.get('/api/admin/stats').then(res => setStats(res.data));
+  }, []);
+
+  return (
+    <div className="p-4">
+      <h1 className="text-xl font-bold mb-4">Admin Panel</h1>
+      <h2 className="text-lg">Reports</h2>
+      {reports.map((r, i) => <p key={i}>{r.content}</p>)}
+      <h2 className="text-lg mt-4">Statistics</h2>
+      <p>Top Saved: {stats.topSaved}</p>
+      <p>Most Active User: {stats.topUser}</p>
+    </div>
+  );
+}
